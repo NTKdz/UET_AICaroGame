@@ -1,175 +1,172 @@
-import copy
-import json
+
+import random
 import time
-import requests
 
-from flask import Flask, jsonify, make_response, request
-from flask_cors import CORS, cross_origin
+def get_available_moves(board, size):
+    return [(i, j) for i in range(size) for j in range(size) if board[i][j] == ' ']
 
-from TicTacToeAi import get_move
-
-app = Flask(__name__)
-cors = CORS(app)
-app.config['CORS_HEADERS'] = 'Content-Type'
-
-host = 'http://10.20.222.43:80'  # Địa chỉ server trọng tài mặc định
-team_id = 123  # team_id mặc định
-game_info = {}  # Thông tin trò chơi để hiển thị trên giao diện
-stop_thread = False  # Biến dùng để dừng thread lắng nghe
-
-
-# Giao tiếp với trọng tài qua API:
-# nghe trọng tài trả về thông tin hiển thị ở '/', gửi yêu cầu khởi tại qua '/init/' và gửi nước đi qua '/move'
-class GameClient:
-    def __init__(self, server_url, room_id, your_team_id, opponent_team_id,  your_team_roles):
-        self.server_url = server_url
-        self.team_id = f'{your_team_id}+{your_team_roles}'
-        self.your_team_id = your_team_id
-        self.opponent_team_id = opponent_team_id
-        self.team_roles = your_team_roles
-        self.match_id = None
-        self.board = None
-        self.init = None
-        self.size = None
-        self.ai = None
-        self.room_id = room_id
-
-    def listen(self):
-        # Lắng nghe yêu cầu từ server trọng tài
-        # và cập nhật thông tin trò chơi
-        while not stop_thread:
-            # Thời gian lắng nghe giữa các lần
-            time.sleep(3)
-            print(f'Init: {self.init}')
-
-            # Nếu chưa kết nối thì gửi yêu cầu kết nối
-            if not self.init:
-                response = self.send_init()
-            else:
-                response = self.fetch_game_info()
-            # print(response.content)
-            # Lấy thông tin trò chơi từ server trọng tài và cập nhật vào game_info
-            data = json.loads(response.content)
-            global game_info
-            game_info = data.copy()
-            print("Data: ", data)
-
-            # Nếu chưa có id phòng thì tiếp tục gửi yêu cầu
-            if data.get("room_id") is None:
-                print("no room id")
-                print(data)
-                continue
-            # Khởi tạo trò chơi
-            if data.get("init"):
-                print("Connection established")
-                self.init = True
-                self.room_id = data.get("room_id")
-
-            # Nhận thông tin trò chơi
-            elif data.get("board") and data.get("status") is None:
-                # Nếu là lượt đi của đội của mình thì gửi nước đi             
-                log_game_info()
-                if data.get("turn") in self.team_id:
-                    self.size = int(data.get("size"))
-                    self.board = copy.deepcopy(data.get("board"))
-                    # Lấy nước đi từ AI, nước đi là một tuple (i, j)
-                    move = get_move(self.board, self.size,self.team_roles)
-                    print("Move: ", move)
-                    # Kiểm tra nước đi hợp lệ
-                    valid_move = self.check_valid_move(move)
-                    # Nếu hợp lệ thì gửi nước đi
-                    if valid_move:
-                        self.board[int(move[0])][int(move[1])] = self.team_roles
-                        game_info["board"] = self.board
-                        self.send_move()
-                    else:
-                        print("Invalid move")
-
-            # Kết thúc trò chơi
-            elif data.get("status") is not None:
-                log_game_info()
-                print("Game over", data["status"])
-                break
-
-    # Gửi thông tin trò chơi đến server trọng tài
-    def send_game_info(self):
-        headers = {"Content-Type": "application/json"}
-        requests.post(self.server_url, json=game_info, headers=headers)
-
-    def send_move(self):
-        # Gửi nước đi đến server trọng tài
-        headers = {"Content-Type": "application/json"}
-        requests.post(self.server_url + "/move", json=game_info, headers=headers)
-
-    def send_init(self):
-        # Gửi yêu cầu kết nối đến server trọng tài
-        init_info = {
-            "room_id": self.room_id,
-            "team1_id": self.your_team_id,
-            "team2_id": self.opponent_team_id,
-            "init": True
-        }
-        headers = {"Content-Type": "application/json"}
-        return requests.post(self.server_url + "/init", json=init_info, headers=headers)
-
-    def fetch_game_info(self):
-        # Lấy thông tin trò chơi từ server trọng tài
-        request_info = {
-            "room_id": self.room_id,
-            "team_id": self.team_id,
-            "match_id": self.match_id
-        }
-        headers = {"Content-Type": "application/json"}
-        response = requests.post(self.server_url, json=request_info, headers=headers)
-        return response
-
-    def check_valid_move(self, new_move_pos):
-        # Kiểm tra nước đi hợp lệ
-        # Điều kiện đơn giản là ô trống mới có thể đánh vào
-        if new_move_pos is None:
-            return False
-        i, j = int(new_move_pos[0]), int(new_move_pos[1])
-        if self.board[i][j] == " ":
+def is_winner(board, size, player):
+    for i in range(size):
+        if all(board[i][j] == player for j in range(size)):
             return True
-        return False
+        if all(board[j][i] == player for j in range(size)):
+            return True
+    for i in range(size - 4):
+        for j in range(size - 4):
+            if all(board[i+k][j+k] == player for k in range(5)):
+                return True
+            if all(board[i+4-k][j+k] == player for k in range(5)):
+                return True
+    return False
 
+def evaluate(board, size, player, opponent):
+    if is_winner(board, size, player):
+        return 10000
+    elif is_winner(board, size, opponent):
+        return -10000
 
-def log_game_info():
-    # Ghi thông tin trò chơi vào file log
-    print("Match id: ", game_info["match_id"])
-    print("Room id: ", game_info["room_id"])
-    print("Turn: ", game_info["turn"])
-    print("Status: ", game_info["status"])
-    print("Size: ", game_info["size"])
-    print("Board: ")
-    for i in range(int(game_info["size"])):
-        for j in range(int(game_info["size"])):
-            print(f'{game_info["board"][i][j]},', end=" ")
-        print()
-    print("time1: ", game_info["time1"])
-    print("time2: ", game_info["time2"])
-    print("team1_id:", game_info["team1_id"])
-    print("team2_id:", game_info["team2_id"])
+    score = 0
 
+    for row in board:
+        score += evaluate_line(row, player, opponent)
+    
+    for col in range(size):
+        column = []
+        for row in range(size):
+            column.append(board[row][col])
+        score += evaluate_line(column, player, opponent)
+    
+    score += evaluate_all_diagonals(board, size, player, opponent)
 
-# API trả về thông tin trò chơi cho frontend
-@app.route('/')
-@cross_origin()
-def get_data():
-    print(game_info)
-    response = make_response(jsonify(game_info))
-    return response
+    return score
 
+def evaluate_all_diagonals(board, size, player, opponent):
+    score = 0
+    for d in range(-size + 1, size):
+        diagonal1 = get_diagonal(board, size, d, True)
+        diagonal2 = get_diagonal(board, size, d, False)
+        score += evaluate_line(diagonal1, player, opponent)
+        score += evaluate_line(diagonal2, player, opponent)
+    return score
 
-if __name__ == "__main__":
-    # Lấy địa chỉ server trọng tài từ người dùng
-    # host = input("Enter server url: ")
-    host = "http://10.100.14.101:80"
-    room_id = input("Enter room id: ")
-    your_team_id = input("Enter your team id: ")
-    opponent_team_id = input("Enter opponent team id: ")
-    team_roles = input("Enter your team role (x/o): ").lower()
-    # Khởi tạo game client
-    gameClient = GameClient(host, room_id, your_team_id, opponent_team_id, team_roles)
-    gameClient.listen()
+def get_diagonal(board, size, offset, top_left_to_bottom_right):
+    diagonal = []
+    for i in range(max(0, offset), min(size, size + offset)):
+        if top_left_to_bottom_right:
+            j = i - offset
+            if 0 <= j < size:
+                diagonal.append(board[i][j])
+        else:
+            j = size - 1 - (i - offset)
+            if 0 <= j < size:
+                diagonal.append(board[i][j])
+    return diagonal
+
+def evaluate_line(line, player, opponent):
+    score = 0
+    patterns = {
+        player*5: 10000,
+        player*4 + ' ': 1000,
+        ' ' + player*4: 1000,
+        ' ' + player*3 + ' ': 100,
+        player + ' ' + player*2: 70,
+        player*2 + ' ' + player: 70,
+        player*3 + '  ': 50,
+        '  ' + player*3: 50,
+        player*2 + '   ': 10,
+        ' ' + player*2 + '  ': 10,
+        '  ' + player*2 + ' ': 10,
+        '   ' + player*2: 10,
+        player + '    ': 1,
+        ' ' + player + '   ': 1,
+        '  ' + player + '  ': 1,
+        '   ' + player + ' ': 1,
+        opponent*5: -10000,
+        opponent*4 + ' ': -2000,
+        ' ' + opponent*4: -2000,
+        opponent*2 + ' ' + opponent: -1000, 
+        opponent + ' ' + opponent*2: -1000,  
+        ' ' + opponent*3 + ' ': -500,
+        opponent*3 + '  ': -500,
+        '  ' + opponent*3: -500,
+        opponent*2 + '   ': -10,
+        ' ' + opponent*2 + '  ': -10,
+        '  ' + opponent*2: -10,
+        opponent + '    ': -1,
+        ' ' + opponent + '   ': -1,
+        '  ' + opponent + '  ': -1,
+        '   ' + opponent + ' ': -1
+    }
+    
+    line_str = ''.join(line)
+    for pattern, value in patterns.items():
+        score += line_str.count(pattern) * value
+    return score
+
+def minimax(board, depth, is_maximizing, alpha, beta, size, max_depth, start_time, time_limit, player, opponent):
+    if time.time() - start_time > time_limit:
+        return evaluate(board, size, player, opponent)
+    
+    available_moves = get_available_moves(board, size)
+    score = evaluate(board, size, player, opponent)
+    
+    if abs(score) == 10000 or not available_moves or depth >= max_depth:
+        return score
+
+    if is_maximizing:
+        max_eval = -float('inf')
+        for move in available_moves:
+            board[move[0]][move[1]] = player
+            eval = minimax(board, depth + 1, False, alpha, beta, size, max_depth, start_time, time_limit, player, opponent)
+            board[move[0]][move[1]] = ' '
+            max_eval = max(max_eval, eval)
+            alpha = max(alpha, eval)
+            if beta <= alpha:
+                break
+        return max_eval
+    else:
+        min_eval = float('inf')
+        for move in available_moves:
+            board[move[0]][move[1]] = opponent
+            eval = minimax(board, depth + 1, True, alpha, beta, size, max_depth, start_time, time_limit, player, opponent)
+            board[move[0]][move[1]] = ' '
+            min_eval = min(min_eval, eval)
+            beta = min(beta, eval)
+            if beta <= alpha:
+                break
+        return min_eval
+
+def find_best_move(board, size, player, opponent, max_depth=5, time_limit=1.0):
+
+    best_value = -float('inf')
+    best_move = None
+    available_moves = get_available_moves(board, size)
+    
+    start_time = time.time()
+
+    for move in available_moves:
+        board[move[0]][move[1]] = player
+        move_value = minimax(board, 0, False, -float('inf'), float('inf'), size, max_depth, start_time, time_limit, player, opponent)
+        board[move[0]][move[1]] = ' '
+        if move_value > best_value:
+            best_move = move
+            best_value = move_value
+    
+    return best_move
+
+def get_move(board, size, team_roles):
+    size = int(size)
+    available_moves = get_available_moves(board, size)
+    if not available_moves:
+        return None
+    
+    player = team_roles
+    opponent = 'x' if team_roles == 'o' else 'o'
+    
+    best_move = find_best_move(board, size, player, opponent)
+    
+    if best_move is None:
+        return available_moves[random.randint(0, len(available_moves) - 1)]
+    else:
+        return best_move
 
