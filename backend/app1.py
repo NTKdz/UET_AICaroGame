@@ -6,7 +6,7 @@ import requests
 from flask import Flask, jsonify, make_response, request
 from flask_cors import CORS, cross_origin
 
-from TicTacToeAi import get_move
+from TicTacToeAi1 import get_move
 
 app = Flask(__name__)
 cors = CORS(app)
@@ -67,7 +67,7 @@ class GameClient:
 
             # Nhận thông tin trò chơi
             elif data.get("board") and data.get("status") is None:
-                # Nếu là lượt đi của đội của mình thì gửi nước đi             
+                # Nếu là lượt đi của đội của mình thì gửi nước đi
                 log_game_info()
                 if data.get("turn") in self.team_id:
                     self.size = int(data.get("size"))
@@ -79,7 +79,8 @@ class GameClient:
                     valid_move = self.check_valid_move(move)
                     # Nếu hợp lệ thì gửi nước đi
                     if valid_move:
-                        self.board[int(move[0])][int(move[1])] = self.team_roles
+                        self.board[int(move[0])][int(
+                            move[1])] = self.team_roles
                         game_info["board"] = self.board
                         self.send_move()
                     else:
@@ -99,7 +100,8 @@ class GameClient:
     def send_move(self):
         # Gửi nước đi đến server trọng tài
         headers = {"Content-Type": "application/json"}
-        requests.post(self.server_url + "/move", json=game_info, headers=headers)
+        requests.post(self.server_url + "/move",
+                      json=game_info, headers=headers)
 
     def send_init(self):
         # Gửi yêu cầu kết nối đến server trọng tài
@@ -120,7 +122,8 @@ class GameClient:
             "match_id": self.match_id
         }
         headers = {"Content-Type": "application/json"}
-        response = requests.post(self.server_url, json=request_info, headers=headers)
+        response = requests.post(
+            self.server_url, json=request_info, headers=headers)
         return response
 
     def check_valid_move(self, new_move_pos):
@@ -170,6 +173,6 @@ if __name__ == "__main__":
     opponent_team_id = input("Enter opponent team id: ")
     team_roles = input("Enter your team role (x/o): ").lower()
     # Khởi tạo game client
-    gameClient = GameClient(host, room_id, your_team_id, opponent_team_id, team_roles)
+    gameClient = GameClient(host, room_id, your_team_id,
+                            opponent_team_id, team_roles)
     gameClient.listen()
-
